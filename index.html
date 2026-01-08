@@ -1,0 +1,297 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>AY25–26 FTE Session Calculator</title>
+  <style>
+    :root{
+      --b:#e6e6e6;
+      --muted:#666;
+      --blue:#1e5bb8;
+      --purple:#6f2dbd;
+    }
+    body { font-family: system-ui, Arial, sans-serif; margin: 28px; }
+    h1 { margin: 0 0 10px; font-size: 22px; }
+    .sub { color: var(--muted); margin: 0 0 16px; line-height: 1.4; }
+    .bar { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin: 12px 0 14px; }
+    button { padding: 9px 12px; font-size: 14px; cursor: pointer; }
+    .wrap { overflow:auto; border:1px solid var(--b); border-radius: 10px; }
+    table { border-collapse: collapse; width: 1750px; min-width: 100%; }
+    th, td { border-bottom: 1px solid var(--b); padding: 10px 10px; vertical-align: middle; }
+    th { text-align: left; background: #fafafa; font-weight: 600; position: sticky; top: 0; z-index: 1; }
+    tfoot td { font-weight: 700; background:#fcfcfc; }
+
+    input[type="text"] { width: 200px; padding: 8px 10px; font-size: 14px; }
+    input[type="number"] { width: 190px; padding: 8px 10px; font-size: 14px; }
+    .num { text-align: right; font-variant-numeric: tabular-nums; }
+    .small { font-size: 12px; color: var(--muted); line-height: 1.2; display: inline-block; margin-top: 4px; }
+
+    /* Outputs */
+    .out-blue { color: var(--blue); font-weight: 600; }
+    .out-purple { color: var(--purple); font-weight: 700; }
+
+    /* Header coloring for calculated columns */
+    th.calc-blue { color: var(--blue); }
+    th.calc-purple { color: var(--purple); }
+
+    .actions { white-space: nowrap; }
+    .note { margin-top: 10px; color: var(--muted); font-size: 12px; }
+    code { background:#f3f3f3; padding: 2px 6px; border-radius: 6px; }
+  </style>
+</head>
+<body>
+  <h1>AY25–26 FTE Session Calculator</h1>
+  <p class="sub">
+    Locked rules:
+    <code>FTE = sessions ÷ 4</code> •
+    <code>FTE Left = Ideal FTE − FTE Completed</code> •
+    <code>Total Session left incl. owed = (MAX hours incl. owed − Completed Attending Sessions) ÷ 4</code>.
+    <br><span class="small">Note: “Total Sessions Left (AY25–26)” is an input-only field (no calculations).</span>
+  </p>
+
+  <div class="bar">
+    <button id="addRow">Add person</button>
+    <button id="clearAll" type="button">Clear all numbers</button>
+  </div>
+
+  <div class="wrap">
+    <table id="calcTable">
+      <thead>
+        <tr>
+          <th style="width:220px;">Person</th>
+
+          <!-- Inputs -->
+          <th style="width:260px;">
+            Actual - Completed Attending Sessions by Hours
+            <br><span class="small">(completed/scheduled to complete by June 30, 2026)</span>
+          </th>
+
+          <th style="width:260px;">
+            Ideal – Attending Sessions by Hours
+            <br><span class="small">(Determined by FTE)</span>
+          </th>
+
+          <th style="width:300px;">
+            Total Sessions by Hours Left (AY25–26)
+            <br><span class="small">(input only – no calculation)</span>
+          </th>
+
+          <!-- Outputs (blue) -->
+          <th class="calc-blue" style="width:220px;">
+            Total Competed Sessions
+            <br><span class="small">(Actual Hours ÷ 4)</span>
+          </th>
+
+          <th class="calc-blue" style="width:220px;">
+            Sessions Determined by FTE
+            <br><span class="small">(Ideal Hours ÷ 4)</span>
+          </th>
+
+          <th class="calc-blue" style="width:240px;">
+           Sessions Left to Complete by June 30, 2026
+            <br><span class="small">(Ideal - Actual)</span>
+          </th>
+
+          <!-- MAX + Purple output -->
+          <th style="width:330px;">
+            MAX - Attending Hours incl. owed
+            <br><span class="small">(Total attending hours + hours owed from AY24–25)</span>
+          </th>
+
+          <th class="calc-purple" style="width:340px;">
+            Total Session left to complete incl. owed
+            <br><span class="small">((MAX hours incl. owed − Completed Attending Sessions) ÷ 4)</span>
+          </th>
+
+          <th class="actions" style="width:110px;">Row</th>
+        </tr>
+      </thead>
+
+      <tbody id="tbody"></tbody>
+
+      <tfoot>
+        <tr>
+          <td>Total</td>
+
+          <td class="num out-blue" data-total="completedSessions"></td>
+          <td class="num out-blue" data-total="idealSessions"></td>
+          <td class="num out-blue" data-total="manualLeftSessions"></td>
+
+          <td class="num out-blue" data-total="completedFte"></td>
+          <td class="num out-blue" data-total="idealFte"></td>
+          <td class="num out-blue" data-total="fteLeft"></td>
+
+          <td class="num out-purple" data-total="maxHours"></td>
+          <td class="num out-purple" data-total="totalLeftInclOwed"></td>
+
+          <td></td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+
+  <div class="note">
+    Divisor is locked at <code>4</code>.
+  </div>
+
+  <script>
+    const tbody = document.getElementById("tbody");
+
+    // Locked divisor
+    const DIVISOR = 4;
+
+    function fmt(n) {
+      if (n === null || n === undefined || Number.isNaN(n)) return "";
+      return (Math.round(n * 100) / 100).toString();
+    }
+
+    function toNumber(value) {
+      if (value === "" || value === null || value === undefined) return null;
+      const n = Number(value);
+      return Number.isFinite(n) ? n : null;
+    }
+
+    function computeFte(sessions) {
+      if (sessions === null) return null;
+      return sessions / DIVISOR;
+    }
+
+    function makeRow(name = "") {
+      const tr = document.createElement("tr");
+
+      tr.innerHTML = `
+        <td>
+          <input type="text" class="person" placeholder="Name" value="${name.replace(/"/g, "&quot;")}" />
+        </td>
+
+        <!-- Inputs -->
+        <td class="num">
+          <input type="number" class="in completedSessions" min="0" step="1" placeholder="0" />
+        </td>
+
+        <td class="num">
+          <input type="number" class="in idealSessions" min="0" step="1" placeholder="0" />
+        </td>
+
+        <td class="num">
+          <input type="number" class="in manualLeftSessions" min="0" step="1" placeholder="0" />
+        </td>
+
+        <!-- Outputs (blue) -->
+        <td class="num out-blue completedFte"></td>
+        <td class="num out-blue idealFte"></td>
+        <td class="num out-blue fteLeft"></td>
+
+        <!-- MAX input + purple output -->
+        <td class="num">
+          <input type="number" class="in maxHours" min="0" step="1" placeholder="0" />
+        </td>
+
+        <td class="num out-purple totalLeftInclOwed"></td>
+
+        <td class="actions">
+          <button type="button" class="dup">Duplicate</button>
+          <button type="button" class="del">Delete</button>
+        </td>
+      `;
+
+      tr.querySelectorAll("input.in").forEach(inp => {
+        inp.addEventListener("input", () => recalc());
+      });
+
+      tr.querySelector(".dup").addEventListener("click", () => {
+        const personName = tr.querySelector(".person").value || "";
+        const newTr = makeRow(personName);
+
+        ["completedSessions","idealSessions","manualLeftSessions","maxHours"].forEach(cls => {
+          const v = tr.querySelector("." + cls).value;
+          newTr.querySelector("." + cls).value = v;
+        });
+
+        tbody.insertBefore(newTr, tr.nextSibling);
+        recalc();
+      });
+
+      tr.querySelector(".del").addEventListener("click", () => {
+        tr.remove();
+        recalc();
+      });
+
+      return tr;
+    }
+
+    function recalc() {
+      const totals = {
+        completedSessions: 0,
+        idealSessions: 0,
+        manualLeftSessions: 0,
+        maxHours: 0,
+
+        completedFte: 0,
+        idealFte: 0,
+        fteLeft: 0,
+
+        totalLeftInclOwed: 0
+      };
+
+      [...tbody.querySelectorAll("tr")].forEach(tr => {
+        const completedSessions = toNumber(tr.querySelector(".completedSessions").value);
+        const idealSessions = toNumber(tr.querySelector(".idealSessions").value);
+        const manualLeftSessions = toNumber(tr.querySelector(".manualLeftSessions").value);
+        const maxHours = toNumber(tr.querySelector(".maxHours").value);
+
+        // Core FTEs
+        const completedFte = computeFte(completedSessions);
+        const idealFte = computeFte(idealSessions);
+
+        // FTE Left = Ideal FTE - FTE Completed
+        const fteLeft =
+          (idealFte === null && completedFte === null) ? null :
+          (idealFte ?? 0) - (completedFte ?? 0);
+
+        // Purple: (MAX hours incl. owed − Completed Attending Sessions) ÷ 4
+        const totalLeftInclOwed =
+          (maxHours === null && completedSessions === null) ? null :
+          ((maxHours ?? 0) - (completedSessions ?? 0)) / DIVISOR;
+
+        tr.querySelector(".completedFte").textContent = fmt(completedFte);
+        tr.querySelector(".idealFte").textContent = fmt(idealFte);
+        tr.querySelector(".fteLeft").textContent = fmt(fteLeft);
+        tr.querySelector(".totalLeftInclOwed").textContent = fmt(totalLeftInclOwed);
+
+        totals.completedSessions += (completedSessions ?? 0);
+        totals.idealSessions += (idealSessions ?? 0);
+        totals.manualLeftSessions += (manualLeftSessions ?? 0);
+        totals.maxHours += (maxHours ?? 0);
+
+        totals.completedFte += (completedFte ?? 0);
+        totals.idealFte += (idealFte ?? 0);
+        totals.fteLeft += (fteLeft ?? 0);
+
+        totals.totalLeftInclOwed += (totalLeftInclOwed ?? 0);
+      });
+
+      document.querySelectorAll("[data-total]").forEach(cell => {
+        const key = cell.getAttribute("data-total");
+        cell.textContent = fmt(totals[key]);
+      });
+    }
+
+    document.getElementById("addRow").addEventListener("click", () => {
+      tbody.appendChild(makeRow(""));
+      recalc();
+    });
+
+    document.getElementById("clearAll").addEventListener("click", () => {
+      tbody.querySelectorAll("input.in").forEach(i => i.value = "");
+      recalc();
+    });
+
+    // DEFAULT: 1 person row
+    tbody.appendChild(makeRow(""));
+
+    recalc();
+  </script>
+</body>
+</html>
