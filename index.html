@@ -16,13 +16,13 @@
     .bar { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin: 12px 0 14px; }
     button { padding: 9px 12px; font-size: 14px; cursor: pointer; }
     .wrap { overflow:auto; border:1px solid var(--b); border-radius: 10px; }
-    table { border-collapse: collapse; width: 1300px; min-width: 100%; }
+    table { border-collapse: collapse; width: 1450px; min-width: 100%; }
     th, td { border-bottom: 1px solid var(--b); padding: 10px; vertical-align: middle; }
     th { background:#fafafa; font-weight:600; position:sticky; top:0; }
     tfoot td { font-weight:700; background:#fcfcfc; }
 
     input[type="text"] { width: 200px; padding: 8px; }
-    input[type="number"] { width: 170px; padding: 8px; }
+    input[type="number"] { width: 160px; padding: 8px; }
     .num { text-align:right; font-variant-numeric: tabular-nums; }
     .small { font-size:12px; color:var(--muted); }
 
@@ -37,7 +37,7 @@
 <h1>AY25–26 FTE Session Calculator</h1>
 <p class="sub">
   Locked rule: <code>FTE = sessions ÷ 4</code>.<br>
-  <span class="small">“Total Sessions Left (AY25–26)” is a manual entry only.</span>
+  <span class="small">Percent Complete = Completed Attending Sessions ÷ Sessions Determined by FTE.</span>
 </p>
 
 <div class="bar">
@@ -52,16 +52,165 @@
       <th>Person</th>
 
       <th>
-        Actual - Completed Attending Sessions by Hours <br>
-        <span class="small">(completed/scheduled to complete by June 30, 2026)</span>
+        Completed Attending Sessions<br>
+        <span class="small">(input)</span>
       </th>
 
       <th>
-        Ideal – Attending Sessions by Hours<br>
-        <span class="small">(Determined by FTE)</span>
+        Sessions Determined by FTE<br>
+        <span class="small">(input)</span>
       </th>
 
       <th>
+        Total Sessions Left (AY25–26)<br>
+        <span class="small">(manual input)</span>
+      </th>
+
+      <th class="calc">
+        FTE Completed<br>
+        <span class="small">(Completed ÷ 4)</span>
+      </th>
+
+      <th class="calc">
+        Ideal FTE (AY25–26)<br>
+        <span class="small">(Sessions ÷ 4)</span>
+      </th>
+
+      <th class="calc">
+        FTE Left (AY25–26)<br>
+        <span class="small">(Ideal FTE − FTE Completed)</span>
+      </th>
+
+      <th class="calc">
+        % of Sessions Completed<br>
+        <span class="small">(Completed ÷ FTE Sessions)</span>
+      </th>
+
+      <th>Row</th>
+    </tr>
+  </thead>
+
+  <tbody id="tbody"></tbody>
+
+  <tfoot>
+    <tr>
+      <td>Total</td>
+      <td class="num out" data-total="completedSessions"></td>
+      <td class="num out" data-total="idealSessions"></td>
+      <td class="num out" data-total="manualLeft"></td>
+      <td class="num out" data-total="completedFte"></td>
+      <td class="num out" data-total="idealFte"></td>
+      <td class="num out" data-total="fteLeft"></td>
+      <td class="num out" data-total="percentComplete"></td>
+      <td></td>
+    </tr>
+  </tfoot>
+</table>
+</div>
+
+<script>
+  const tbody = document.getElementById("tbody");
+  const DIVISOR = 4;
+
+  function fmt(n) {
+    return n == null || isNaN(n) ? "" : (Math.round(n * 100) / 100);
+  }
+
+  function pct(n) {
+    return n == null || isNaN(n) ? "" : (Math.round(n * 1000) / 10) + "%";
+  }
+
+  function num(v) {
+    return v === "" ? null : Number(v);
+  }
+
+  function row(name="") {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td><input type="text" value="${name}" /></td>
+      <td class="num"><input type="number" class="completedSessions" /></td>
+      <td class="num"><input type="number" class="idealSessions" /></td>
+      <td class="num"><input type="number" class="manualLeft" /></td>
+      <td class="num out completedFte"></td>
+      <td class="num out idealFte"></td>
+      <td class="num out fteLeft"></td>
+      <td class="num out percentComplete"></td>
+      <td class="actions">
+        <button class="dup">Duplicate</button>
+        <button class="del">Delete</button>
+      </td>
+    `;
+    tr.querySelectorAll("input").forEach(i => i.oninput = calc);
+    tr.querySelector(".dup").onclick = () => {
+      const r = row(tr.querySelector("input").value);
+      tbody.insertBefore(r, tr.nextSibling);
+      calc();
+    };
+    tr.querySelector(".del").onclick = () => { tr.remove(); calc(); };
+    return tr;
+  }
+
+  function calc() {
+    let totalCompleted = 0;
+    let totalIdeal = 0;
+
+    const totals = {
+      completedSessions:0, idealSessions:0, manualLeft:0,
+      completedFte:0, idealFte:0, fteLeft:0
+    };
+
+    [...tbody.children].forEach(tr => {
+      const c = num(tr.querySelector(".completedSessions").value);
+      const i = num(tr.querySelector(".idealSessions").value);
+      const m = num(tr.querySelector(".manualLeft").value);
+
+      const cf = c==null?null:c/DIVISOR;
+      const ift = i==null?null:i/DIVISOR;
+      const fl = (ift??0)-(cf??0);
+      const pc = (c!=null && i>0) ? c/i : null;
+
+      tr.querySelector(".completedFte").textContent = fmt(cf);
+      tr.querySelector(".idealFte").textContent = fmt(ift);
+      tr.querySelector(".fteLeft").textContent = fmt(fl);
+      tr.querySelector(".percentComplete").textContent = pct(pc);
+
+      totals.completedSessions += c??0;
+      totals.idealSessions += i??0;
+      totals.manualLeft += m??0;
+      totals.completedFte += cf??0;
+      totals.idealFte += ift??0;
+      totals.fteLeft += fl??0;
+
+      totalCompleted += c??0;
+      totalIdeal += i??0;
+    });
+
+    document.querySelectorAll("[data-total]").forEach(td=>{
+      if (td.dataset.total === "percentComplete") {
+        td.textContent = totalIdeal > 0 ? pct(totalCompleted/totalIdeal) : "";
+      } else {
+        td.textContent = fmt(totals[td.dataset.total]);
+      }
+    });
+  }
+
+  document.getElementById("addRow").onclick = () => {
+    tbody.appendChild(row(""));
+    calc();
+  };
+
+  document.getElementById("clearAll").onclick = () => {
+    tbody.querySelectorAll("input[type=number]").forEach(i=>i.value="");
+    calc();
+  };
+
+  /* DEFAULT: 1 person */
+  tbody.appendChild(row(""));
+  calc();
+</script>
+
+</body>
+</html>
         Total Sessions by Hours Left (AY25–26)<br>
         <span class="small">(input only – no calculation)</span>
       </th>
@@ -188,3 +337,4 @@
 
 </body>
 </html>
+
